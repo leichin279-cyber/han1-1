@@ -215,6 +215,12 @@ button:focus-visible,[tabindex]:focus-visible{outline:4px solid #2F7A5E;outline-
   border-radius:16px;padding:12px 16px;font-size:15px;font-weight:700;margin:14px 0 0;line-height:1.6;
 }
 .voice-warn.on{display:block;}
+.diag-box{
+  display:none;background:#F3F7FA;border:2px solid var(--line);border-radius:16px;
+  padding:16px 18px;font-size:15px;line-height:1.8;margin-top:16px;text-align:left;
+}
+.diag-box.on{display:block;}
+.diag-status{font-weight:800;margin-top:8px;}
 .star-pop{position:absolute;top:8px;right:14px;font-size:44px;animation:pop .9s ease-out;}
 @keyframes pop{0%{transform:scale(.3);opacity:0;}45%{transform:scale(1.2);opacity:1;}100%{transform:scale(1);opacity:1;}}
 
@@ -244,7 +250,12 @@ button:focus-visible,[tabindex]:focus-visible{outline:4px solid #2F7A5E;outline-
   <div class="home-tools">
     <button class="tool-btn" id="btnSettings">⚙️ 교사용 설정</button>
     <button class="tool-btn" id="btnResult">📋 결과 확인하기</button>
-    <button class="tool-btn" id="btnVoiceTest">🔊 소리 확인</button>
+    <button class="tool-btn" id="btnVoiceTest">🔊 소리 진단</button>
+  </div>
+
+  <div class="diag-box" id="diagBox">
+    <div id="diagInfo"></div>
+    <div class="diag-status" id="diagStatus"></div>
   </div>
 
   <p class="voice-warn" id="voiceWarn">
@@ -573,6 +584,57 @@ function speak(text, opt){
   } else {
     fire();
   }
+}
+
+function runDiagnostics(){
+  const box = $("diagBox"), info = $("diagInfo"), status = $("diagStatus");
+  box.classList.add("on");
+
+  if (!TTS){
+    info.innerHTML = "이 브라우저는 음성 합성 기능(Web Speech API)을 지원하지 않습니다.";
+    status.textContent = "❌ 다른 브라우저(Chrome, Edge)로 열어 주세요.";
+    return;
+  }
+
+  unlockSpeech();
+  pickVoice();
+  const voices = TTS.getVoices() || [];
+  const ko = voices.filter(v => /^ko/i.test(v.lang || ""));
+
+  let html = "브라우저가 찾은 전체 음성: <b>" + voices.length + "개</b><br>";
+  if (ko.length){
+    html += "한국어 음성 " + ko.length + "개: " +
+      ko.map(v => v.name + " (" + v.lang + ")").join(", ");
+  } else {
+    html += "한국어(ko) 음성을 <b>찾지 못했습니다</b>. " +
+      "Windows에 음성은 설치돼 있어도 이 브라우저가 인식하지 못하는 상태입니다.";
+  }
+  info.innerHTML = html;
+  status.textContent = "🔊 소리를 재생해 볼게요...";
+
+  const u = new SpeechSynthesisUtterance("안녕하세요. 소리가 잘 들리나요?");
+  u.lang = "ko-KR";
+  u.rate = settings.rate;
+  u.pitch = 1.05;
+  u.volume = 1;
+  if (koVoice) u.voice = koVoice;
+  let started = false;
+  u.onstart = () => { started = true; status.textContent = "✅ 재생을 시작했습니다. 소리가 들렸나요?"; };
+  u.onerror = e => { status.textContent = "❌ 재생 오류: " + e.error; };
+  u.onend = () => {
+    if (!started) status.textContent = "❌ 재생이 시작되지 않았습니다. (음성이 감지되지 않음)";
+  };
+
+  TTS.cancel();
+  setTimeout(() => {
+    TTS.speak(u);
+    setTimeout(() => {
+      if (!started && status.textContent.indexOf("오류") === -1){
+        status.textContent = "❌ 3초가 지나도 소리가 시작되지 않았습니다. " +
+          "브라우저를 다시 시작하거나 Edge/Chrome 최신 버전으로 시도해 보세요.";
+      }
+    }, 3000);
+  }, 150);
 }
 
 
@@ -1265,7 +1327,7 @@ $("btnHome2").addEventListener("click", () => show("home"));
 $("btnHome3").addEventListener("click", () => show("home"));
 $("btnSettings").addEventListener("click", () => { buildVerbPicker(); syncChips(); show("settings"); });
 $("btnResult").addEventListener("click", () => { renderResult(); show("result"); });
-$("btnVoiceTest").addEventListener("click", () => speak("안녕하세요. 낱말 기차를 시작해요."));
+$("btnVoiceTest").addEventListener("click", runDiagnostics);
 $("btnSkipReward").addEventListener("click", closeReward);
 $("btnClearLog").addEventListener("click", () => {
   log.total = 0; log.solo = 0; log.hinted = 0; log.stars = 0;
